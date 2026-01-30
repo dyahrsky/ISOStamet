@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard Monitoring ISO — Meteorologi Penerbangan</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <style>
+    :root {
+      --bg: #f4faff; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+      --accent: #121f92; --border: #e2e8f0;
+      --shadow: 0 10px 25px rgba(0,0,0,0.08);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Lexend', sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; width: 100%; overflow: hidden; }
+    main { height: 100vh; width: 100%; }
+
+    .map-container { height: 100vh; width: 100%; position: relative; }
+    #map { height: 100%; width: 100%; z-index: 1; }
+    
+    .map-title { 
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%); 
+      background: rgba(255,255,255,0.95); padding: 0.6rem 1.5rem; 
+      border-radius: 2rem; font-weight: 700; z-index: 1000; 
+      box-shadow: var(--shadow); font-size: 0.9rem;
+      border: 1px solid var(--border); text-align: center;
+      pointer-events: none;
+    }
+
+    /* Floating Controls Pojok Kanan Atas */
+    .top-right-controls {
+      position: absolute; top: 20px; right: 20px; z-index: 1100;
+      display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+    }
+
+    .control-card {
+      background: rgba(255,255,255,0.95); padding: 8px 12px; 
+      border-radius: 12px; display: flex; align-items: center; gap: 10px;
+      box-shadow: var(--shadow); border: 1px solid var(--border);
+    }
+
+    .control-card select {
+      border: none; background: transparent; font-weight: 600; 
+      outline: none; cursor: pointer; color: var(--text); font-size: 13px;
+    }
+
+    .layer-indicator {
+      width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff;
+      box-shadow: 0 0 0 1px var(--border);
+    }
+
+    /* Tombol Aksi */
+    .action-btn {
+      background: white; border: 1px solid var(--border); width: 40px; height: 40px;
+      border-radius: 12px; cursor: pointer; display: flex; align-items: center; 
+      justify-content: center; box-shadow: var(--shadow); transition: 0.2s;
+    }
+    .action-btn:hover { background: #f8fafc; color: var(--accent); }
+
+    /* Fullscreen button bottom-right */
+    .fullscreen-bottom { position: absolute; bottom: 20px; right: 20px; z-index: 1100; }
+
+    /* Legenda */
+    .legend-control { 
+      background: white; padding: 15px; border-radius: 12px; 
+      box-shadow: var(--shadow); border: 1px solid var(--border);
+      min-width: 200px; margin: 0;
+    }
+    /* Force legend to be 1cm inset from the map when in the bottom-left corner */
+    .leaflet-bottom.leaflet-left .legend-control {
+      position: absolute;
+      left: 1cm;
+      bottom: 1cm;
+    }
+    .legend-control strong { font-size: 14px; color: var(--accent); display: block; margin-bottom: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 6px; cursor: pointer; transition: 0.2s; }
+    .legend-color { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
+
+    /* Label Peta */
+    .map-label {
+      font-size: 9px; font-weight: 600; color: #334155;
+      text-shadow: 0 0 3px #fff, 0 0 3px #fff; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<main>
+  <div class="map-container">
+    <div class="map-title">Monitoring ISO Stasiun Meteorologi Penerbangan 2025</div>
+    
+    <div class="top-right-controls">
+      <div class="control-card">
+        <div id="layerIndicator" class="layer-indicator"></div>
+        <select id="dataLayerSelect">
+          <option value="Status ISO">Status ISO</option>
+          <option value="Siklus ISO">Siklus ISO</option>
+          <option value="Status Anggaran">Status Anggaran</option>
+          <option value="Status Blokir">Status Blokir</option>
+        </select>
+      </div>
+
+      <button id="labelToggleBtn" class="action-btn" title="Tampilkan/Sembunyikan Label">
+        <i class="fas fa-eye"></i>
+      </button>
+
+    </div>
+
+    <div id="map"></div>
+
+    <button id="fullscreenBtn" class="action-btn fullscreen-bottom" title="Fullscreen">
+      <i class="fas fa-expand"></i>
+    </button>
+  </div>
+</main> 
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+<script>
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRXPaNlC5h37kmVwxCts3u96FL0IXuXykl3IaJo4Tsjxxj2na_MCEdeiMAd-L2SCw/pub?gid=1178288277&single=true&output=csv';
+
+  const configs = {
+    'Status ISO': {
+      column: 'status_sertifikasi',
+      colors: { 'Sudah Tersertifikasi': '#16a34a', 'Belum Tersertifikasi': '#ef4444' }
+    },
+    'Siklus ISO': {
+      column: 'status_iso_tahun_2025',
+      colors: { 
+        'Sertifikasi Baru': '#1E40AF',
+        'Surveillance Pertama': '#10B981',
+        'Surveillance Kedua': '#F97316',
+        'Renewal': '#DC2626',
+        'Belum Tersertifikasi': '#4B5563' 
+      }
+    },
+    'Status Anggaran': {
+      column: 'status_anggaran_2025',
+      colors: { 'Sudah Tercantum': '#059669', 'Dalam Proses Perubahan': '#d97706', 'Belum Tercantum': '#dc2626' }
+    },
+    'Status Blokir': {
+      column: 'status_blokir_2025',
+      colors: { 'Anggaran Masih Terblokir': '#991b1b' }
+    }
+  };
+
+  let globalData = [];
+  let currentMarkers = L.layerGroup();
+  let currentLayer = 'Status ISO';
+  let showLabels = true;
+  let selectedClass = null;
+
+  const map = L.map('map', { center: [-2.5837572393430888, 119.48439269219644], zoom: 5.4, zoomControl: false });
+  L.control.zoom({ position: 'topleft' }).addTo(map);
+
+  // Basemap Clean (Tanpa Label Bawaan)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB'
+  }).addTo(map);
+
+  async function init() {
+    Papa.parse(SHEET_URL, {
+      download: true, header: true, skipEmptyLines: true,
+      complete: function(results) {
+        globalData = results.data;
+        setupEventListeners();
+        updateView('Status ISO');
+      }
+    });
+  }
+
+  function setupEventListeners() {
+    const select = document.getElementById('dataLayerSelect');
+    select.addEventListener('change', (e) => updateView(e.target.value));
+
+    document.getElementById('labelToggleBtn').addEventListener('click', function() {
+      showLabels = !showLabels;
+      this.innerHTML = showLabels ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+      updateView(currentLayer);
+    });
+
+    document.getElementById('fullscreenBtn').addEventListener('click', function() {
+      const el = document.querySelector('.map-container');
+      if (!document.fullscreenElement) {
+        el.requestFullscreen();
+        this.innerHTML = '<i class="fas fa-compress"></i>';
+      } else {
+        document.exitFullscreen();
+        this.innerHTML = '<i class="fas fa-expand"></i>';
+      }
+    });
+  }
+
+  function updateView(layerName) {
+    currentLayer = layerName;
+    selectedClass = null;
+    currentMarkers.clearLayers();
+    const config = configs[layerName];
+
+    // Update warna indikator di dropdown
+    document.getElementById('layerIndicator').style.background = Object.values(config.colors)[0];
+
+    globalData.forEach(row => {
+      const lat = parseFloat(row.Lat), lng = parseFloat(row.Long);
+      if(isNaN(lat) || isNaN(lng)) return;
+
+      const val = row[config.column] || 'Data Kosong';
+      const color = config.colors[val] || '#94a3b8';
+
+      const marker = L.circleMarker([lat, lng], {
+        radius: 8, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.9
+      });
+
+      marker.val = val;
+      marker.bindPopup(`<b>${row.stasiun_meteorologi}</b><br>${layerName}: ${val}`);
+      
+      // Tambah Label jika aktif
+      if (showLabels && row.label) {
+        const label = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'map-label',
+            html: `<div style="margin-left:12px; margin-top:-8px">${row.label}</div>`,
+            iconSize: [0, 0]
+          }),
+          interactive: false
+        });
+        currentMarkers.addLayer(label);
+      }
+
+      currentMarkers.addLayer(marker);
+    });
+
+    currentMarkers.addTo(map);
+    updateLegend();
+  }
+
+  const legend = L.control({ position: 'bottomleft' });
+  function updateLegend() {
+    legend.remove(map);
+    legend.onAdd = function() {
+      const div = L.DomUtil.create('div', 'legend-control');
+      const config = configs[currentLayer];
+      div.innerHTML = `<strong>${currentLayer}</strong>`;
+
+      for (const [label, color] of Object.entries(config.colors)) {
+        const count = globalData.filter(d => d[config.column] === label).length;
+        const item = L.DomUtil.create('div', 'legend-item', div);
+        item.style.opacity = (selectedClass && selectedClass !== label) ? '0.3' : '1';
+        item.innerHTML = `<span class="legend-color" style="background:${color}"></span>${label} (${count})`;
+        
+        item.onclick = () => {
+          selectedClass = (selectedClass === label) ? null : label;
+          filterMarkers();
+          updateLegend();
+        };
+      }
+      return div;
+    };
+    legend.addTo(map);
+  }
+
+  function filterMarkers() {
+    currentMarkers.eachLayer(layer => {
+      if (layer instanceof L.CircleMarker) {
+        if (!selectedClass || layer.val === selectedClass) {
+          layer.setStyle({ fillOpacity: 0.9, opacity: 1 });
+        } else {
+          layer.setStyle({ fillOpacity: 0.1, opacity: 0.1 });
+        }
+      }
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
