@@ -210,20 +210,25 @@
     currentMarkers.clearLayers();
     const config = configs[layerName];
 
-    // Indikator warna ambil warna pertama dari config
+    // Update warna indikator di dropdown
     document.getElementById('layerIndicator').style.background = Object.values(config.colors)[0];
 
     globalData.forEach(row => {
-      // Perhatikan Case Sensitive pada kolom Lat & Long
       const lat = parseFloat(row.Lat);
       const lng = parseFloat(row.Long);
       
-      if(isNaN(lat) || isNaN(lng)) return;
+      // --- TAMBAHKAN PENGECEKAN DI SINI ---
+      const val = row[config.column] ? row[config.column].trim() : "";
+      
+      // Jika koordinat salah ATAU data pada kolom target kosong, JANGAN munculkan simbol
+      if(isNaN(lat) || isNaN(lng) || val === "" || val === "-" || val === "0") {
+        return; // Skip baris ini, lanjut ke data berikutnya
+      }
+      // ------------------------------------
 
-      const val = row[config.column] || 'Data Kosong';
       const color = config.colors[val] || '#94a3b8';
 
-      // Marker
+      // Buat Marker
       const marker = L.circleMarker([lat, lng], {
         radius: 8, 
         fillColor: color, 
@@ -233,11 +238,10 @@
       });
 
       marker.val = val;
-      // Gunakan nama kolom stasiun yang benar sesuai data Anda
-      const namaStasiun = row.stasiun_meteorologi || row.id || 'Stasiun';
+      const namaStasiun = row.stasiun_meteorologi || row.label || 'Stasiun';
       marker.bindPopup(`<b>${namaStasiun}</b><br>${layerName}: ${val}`);
       
-      // Label
+      // Label (hanya muncul jika marker muncul)
       if (showLabels && row.label) {
         const labelIcon = L.divIcon({
           className: 'map-label',
