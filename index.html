@@ -31,7 +31,6 @@
       pointer-events: none;
     }
 
-    /* Floating Controls Pojok Kanan Atas */
     .top-right-controls {
       position: absolute; top: 20px; right: 20px; z-index: 1100;
       display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
@@ -48,12 +47,8 @@
       outline: none; cursor: pointer; color: var(--text); font-size: 13px;
     }
 
-    .layer-indicator {
-      width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff;
-      box-shadow: 0 0 0 1px var(--border);
-    }
+    .layer-indicator { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
 
-    /* Tombol Aksi */
     .action-btn {
       background: white; border: 1px solid var(--border); width: 40px; height: 40px;
       border-radius: 12px; cursor: pointer; display: flex; align-items: center; 
@@ -61,29 +56,24 @@
     }
     .action-btn:hover { background: #f8fafc; color: var(--accent); }
 
-    /* Fullscreen button bottom-right */
-    .fullscreen-bottom { position: absolute; bottom: 20px; right: 20px; z-index: 1100; }
-
-    /* Legenda */
+    /* Fix Legenda agar 1cm dari pinggir */
     .legend-control { 
       background: white; padding: 15px; border-radius: 12px; 
       box-shadow: var(--shadow); border: 1px solid var(--border);
-      min-width: 200px; margin: 0;
+      min-width: 200px;
     }
-    /* Force legend to be 1cm inset from the map when in the bottom-left corner */
-    .leaflet-bottom.leaflet-left .legend-control {
-      position: absolute;
-      left: 1cm;
-      bottom: 1cm;
-    }
-    .legend-control strong { font-size: 14px; color: var(--accent); display: block; margin-bottom: 10px; }
+    
+    /* Overriding Leaflet default position for precision */
+    .leaflet-bottom.leaflet-left { margin-left: 1cm !important; margin-bottom: 1cm !important; }
+
+    .legend-control strong { font-size: 14px; color: var(--accent); display: block; margin-bottom: 10px; text-transform: uppercase; }
     .legend-item { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 6px; cursor: pointer; transition: 0.2s; }
     .legend-color { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
 
-    /* Label Peta */
     .map-label {
-      font-size: 9px; font-weight: 600; color: #334155;
-      text-shadow: 0 0 3px #fff, 0 0 3px #fff; pointer-events: none;
+      font-size: 10px; font-weight: 700; color: #1e293b;
+      text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -108,12 +98,11 @@
       <button id="labelToggleBtn" class="action-btn" title="Tampilkan/Sembunyikan Label">
         <i class="fas fa-eye-slash"></i>
       </button>
-
     </div>
 
     <div id="map"></div>
 
-    <button id="fullscreenBtn" class="action-btn fullscreen-bottom" title="Fullscreen">
+    <button id="fullscreenBtn" class="action-btn" style="position: absolute; bottom: 20px; right: 20px; z-index: 1100;" title="Fullscreen">
       <i class="fas fa-expand"></i>
     </button>
   </div>
@@ -125,6 +114,7 @@
 <script>
   const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRXPaNlC5h37kmVwxCts3u96FL0IXuXykl3IaJo4Tsjxxj2na_MCEdeiMAd-L2SCw/pub?gid=1178288277&single=true&output=csv';
 
+  // Perbaikan Nama Kolom sesuai input Anda
   const configs = {
     'Status ISO': {
       column: 'status_sertifikasi',
@@ -163,23 +153,30 @@
   let globalData = [];
   let currentMarkers = L.layerGroup();
   let currentLayer = 'Status ISO';
-  // default: labels hidden; click the eye button to show
   let showLabels = false;
   let selectedClass = null; 
 
-  const map = L.map('map', { center: [-2.5837572393430888, 119.48439269219644], zoom: 5.4, zoomControl: false });
+  // Inisialisasi Map
+  const map = L.map('map', { 
+    center: [-2.5, 118], 
+    zoom: 5, 
+    zoomControl: false 
+  });
+  
   L.control.zoom({ position: 'topleft' }).addTo(map);
 
-  // Basemap Clean (Tanpa Label Bawaan)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
     attribution: '© CartoDB'
   }).addTo(map);
 
   async function init() {
     Papa.parse(SHEET_URL, {
-      download: true, header: true, skipEmptyLines: true,
+      download: true, 
+      header: true, 
+      skipEmptyLines: true,
       complete: function(results) {
         globalData = results.data;
+        console.log("Data loaded:", globalData[0]); // Untuk cek di console browser
         setupEventListeners();
         updateView('Status ISO');
       }
@@ -187,8 +184,7 @@
   }
 
   function setupEventListeners() {
-    const select = document.getElementById('dataLayerSelect');
-    select.addEventListener('change', (e) => updateView(e.target.value));
+    document.getElementById('dataLayerSelect').addEventListener('change', (e) => updateView(e.target.value));
 
     document.getElementById('labelToggleBtn').addEventListener('click', function() {
       showLabels = !showLabels;
@@ -214,34 +210,42 @@
     currentMarkers.clearLayers();
     const config = configs[layerName];
 
-    // Update warna indikator di dropdown
+    // Indikator warna ambil warna pertama dari config
     document.getElementById('layerIndicator').style.background = Object.values(config.colors)[0];
 
     globalData.forEach(row => {
-      const lat = parseFloat(row.Lat), lng = parseFloat(row.Long);
+      // Perhatikan Case Sensitive pada kolom Lat & Long
+      const lat = parseFloat(row.Lat);
+      const lng = parseFloat(row.Long);
+      
       if(isNaN(lat) || isNaN(lng)) return;
 
       const val = row[config.column] || 'Data Kosong';
       const color = config.colors[val] || '#94a3b8';
 
+      // Marker
       const marker = L.circleMarker([lat, lng], {
-        radius: 8, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.9
+        radius: 8, 
+        fillColor: color, 
+        color: "#fff", 
+        weight: 2, 
+        fillOpacity: 0.9
       });
 
       marker.val = val;
-      marker.bindPopup(`<b>${row.stasiun_meteorologi}</b><br>${layerName}: ${val}`);
+      // Gunakan nama kolom stasiun yang benar sesuai data Anda
+      const namaStasiun = row.stasiun_meteorologi || row.id || 'Stasiun';
+      marker.bindPopup(`<b>${namaStasiun}</b><br>${layerName}: ${val}`);
       
-      // Tambah Label jika aktif
+      // Label
       if (showLabels && row.label) {
-        const label = L.marker([lat, lng], {
-          icon: L.divIcon({
-            className: 'map-label',
-            html: `<div style="margin-left:12px; margin-top:-8px">${row.label}</div>`,
-            iconSize: [0, 0]
-          }),
-          interactive: false
+        const labelIcon = L.divIcon({
+          className: 'map-label',
+          html: `<div style="margin-left:14px; margin-top:-10px">${row.label}</div>`,
+          iconSize: [0, 0]
         });
-        currentMarkers.addLayer(label);
+        const labelMarker = L.marker([lat, lng], { icon: labelIcon, interactive: false });
+        currentMarkers.addLayer(labelMarker);
       }
 
       currentMarkers.addLayer(marker);
@@ -252,31 +256,35 @@
   }
 
   const legend = L.control({ position: 'bottomleft' });
-  function updateLegend() {
-    legend.remove(map);
-    legend.onAdd = function() {
-      const div = L.DomUtil.create('div', 'legend-control');
-      const config = configs[currentLayer];
-      div.innerHTML = `<strong>${currentLayer}</strong>`;
 
-      for (const [label, color] of Object.entries(config.colors)) {
-        const count = globalData.filter(d => d[config.column] === label).length;
-        const item = L.DomUtil.create('div', 'legend-item', div);
-        item.style.opacity = (selectedClass && selectedClass !== label) ? '0.3' : '1';
-        item.innerHTML = `<span class="legend-color" style="background:${color}"></span>${label} (${count})`;
-        
-        item.onclick = () => {
-          selectedClass = (selectedClass === label) ? null : label;
-          filterMarkers();
-          updateLegend();
-        };
-      }
-      return div;
-    };
-    legend.addTo(map);
+  legend.onAdd = function() {
+    this._div = L.DomUtil.create('div', 'legend-control');
+    return this._div;
+  };
+
+  function updateLegend() {
+    if (!legend._map) legend.addTo(map);
+    
+    const config = configs[currentLayer];
+    let html = `<strong>${currentLayer}</strong>`;
+
+    for (const [label, color] of Object.entries(config.colors)) {
+      const count = globalData.filter(d => d[config.column] === label).length;
+      const opacity = (selectedClass && selectedClass !== label) ? '0.3' : '1';
+      
+      html += `
+        <div class="legend-item" style="opacity: ${opacity}" onclick="filterByLegend('${label}')">
+          <span class="legend-color" style="background:${color}"></span>
+          <span>${label} (${count})</span>
+        </div>`;
+    }
+    legend._div.innerHTML = html;
   }
 
-  function filterMarkers() {
+  // Fungsi Filter Global
+  window.filterByLegend = function(label) {
+    selectedClass = (selectedClass === label) ? null : label;
+    
     currentMarkers.eachLayer(layer => {
       if (layer instanceof L.CircleMarker) {
         if (!selectedClass || layer.val === selectedClass) {
@@ -286,7 +294,8 @@
         }
       }
     });
-  }
+    updateLegend();
+  };
 
   init();
 </script>
