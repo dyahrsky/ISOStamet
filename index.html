@@ -56,14 +56,12 @@
     }
     .action-btn:hover { background: #f8fafc; color: var(--accent); }
 
-    /* Fix Legenda agar 1cm dari pinggir */
     .legend-control { 
       background: white; padding: 15px; border-radius: 12px; 
       box-shadow: var(--shadow); border: 1px solid var(--border);
       min-width: 200px;
     }
     
-    /* Overriding Leaflet default position for precision */
     .leaflet-bottom.leaflet-left { margin-left: 1cm !important; margin-bottom: 1cm !important; }
 
     .legend-control strong { font-size: 14px; color: var(--accent); display: block; margin-bottom: 10px; text-transform: uppercase; }
@@ -114,7 +112,6 @@
 <script>
   const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRXPaNlC5h37kmVwxCts3u96FL0IXuXykl3IaJo4Tsjxxj2na_MCEdeiMAd-L2SCw/pub?gid=1178288277&single=true&output=csv';
 
-  // Perbaikan Nama Kolom sesuai input Anda
   const configs = {
     'Status ISO': {
       column: 'status_sertifikasi',
@@ -156,7 +153,6 @@
   let showLabels = false;
   let selectedClass = null; 
 
-  // Inisialisasi Map
   const map = L.map('map', { 
     center: [-2.5, 118], 
     zoom: 5, 
@@ -176,7 +172,6 @@
       skipEmptyLines: true,
       complete: function(results) {
         globalData = results.data;
-        console.log("Data loaded:", globalData[0]); // Untuk cek di console browser
         setupEventListeners();
         updateView('Status ISO');
       }
@@ -210,25 +205,19 @@
     currentMarkers.clearLayers();
     const config = configs[layerName];
 
-    // Update warna indikator di dropdown
     document.getElementById('layerIndicator').style.background = Object.values(config.colors)[0];
 
     globalData.forEach(row => {
       const lat = parseFloat(row.Lat);
       const lng = parseFloat(row.Long);
       
-      // --- TAMBAHKAN PENGECEKAN DI SINI ---
-      const val = row[config.column] ? row[config.column].trim() : "";
-      
-      // Jika koordinat salah ATAU data pada kolom target kosong, JANGAN munculkan simbol
-      if(isNaN(lat) || isNaN(lng) || val === "" || val === "-" || val === "0") {
-        return; // Skip baris ini, lanjut ke data berikutnya
-      }
-      // ------------------------------------
+      const valRaw = row[config.column];
+      const val = valRaw ? valRaw.trim() : "";
+
+      if(isNaN(lat) || isNaN(lng) || val === "" || val === "0" || val === "-") return;
 
       const color = config.colors[val] || '#94a3b8';
 
-      // Buat Marker
       const marker = L.circleMarker([lat, lng], {
         radius: 8, 
         fillColor: color, 
@@ -241,7 +230,6 @@
       const namaStasiun = row.stasiun_meteorologi || row.label || 'Stasiun';
       marker.bindPopup(`<b>${namaStasiun}</b><br>${layerName}: ${val}`);
       
-      // Label (hanya muncul jika marker muncul)
       if (showLabels && row.label) {
         const labelIcon = L.divIcon({
           className: 'map-label',
@@ -273,7 +261,13 @@
     let html = `<strong>${currentLayer}</strong>`;
 
     for (const [label, color] of Object.entries(config.colors)) {
-      const count = globalData.filter(d => d[config.column] === label).length;
+      const count = globalData.filter(d => {
+          const dVal = d[config.column] ? d[config.column].trim() : "";
+          return dVal === label;
+      }).length;
+      
+      if (count === 0) continue;
+
       const opacity = (selectedClass && selectedClass !== label) ? '0.3' : '1';
       
       html += `
@@ -285,7 +279,6 @@
     legend._div.innerHTML = html;
   }
 
-  // Fungsi Filter Global
   window.filterByLegend = function(label) {
     selectedClass = (selectedClass === label) ? null : label;
     
